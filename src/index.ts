@@ -6,20 +6,27 @@ import { MongoClient, Db } from 'mongodb';
 dotenv.config();
 
 // MongoDB connection URL
-const mongoUrl = process.env.MONGO_URI || 'mongodb://localhost:27017/keanudb';
+const mongoUrl = process.env.MONGO_URI;
+
+if (!mongoUrl) {
+    console.error('MONGO_URI is not defined in the environment variables');
+    process.exit(1);
+}
 
 // MongoDB connection function
 async function connectToDatabase(): Promise<Db> {
-  const client = new MongoClient(mongoUrl);
-  
-  try {
-    await client.connect();
-    console.log('Connected successfully to MongoDB');
-    return client.db();
-  } catch (error) {
-    console.error('Could not connect to MongoDB', error);
-    process.exit(1);
-  }
+    console.log('Connecting to MongoDB...', mongoUrl);
+    if (!mongoUrl) return process.exit(1);
+    const client = new MongoClient(mongoUrl);
+    
+    try {
+        await client.connect();
+        console.log('Connected successfully to MongoDB');
+        return client.db();
+    } catch (error) {
+        console.error('Could not connect to MongoDB', error);
+        process.exit(1);
+    }
 }
 
 // Define your GraphQL schema

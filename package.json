@@ -4,12 +4,12 @@
   "main": "index.js",
   "description": "Keanu Reeves image retrieval app",
   "scripts": {
-    "start": "node dist/index.js",
+    "start": "npm run build && node ./.build/index.js",
     "dev": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "format": "prettier --write \"src/**/*.ts\"",
-    "build": "tsc"
+    "build": "tsc -p tsconfig.production.json"
   },
   "keywords": [],
   "author": "",
