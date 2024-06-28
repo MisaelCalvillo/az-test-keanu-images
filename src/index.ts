@@ -15,6 +15,8 @@ if (!mongoUrl) {
   process.exit(1);
 }
 
+let dbClient: MongoClient;
+
 // MongoDB connection function
 async function connectToDatabase(): Promise<Db> {
   console.log('Connecting to MongoDB...');
@@ -22,16 +24,31 @@ async function connectToDatabase(): Promise<Db> {
   // Remove any surrounding quotes from the connection string
   const cleanMongoUrl = mongoUrl?.replace(/^["'](.+(?=["']$))["']$/, '$1');
   if (!cleanMongoUrl) return process.exit(1);
-  
-  const client = new MongoClient(cleanMongoUrl);
+
+  dbClient = new MongoClient(cleanMongoUrl);
   
   try {
-    await client.connect();
+    await dbClient.connect();
     console.log('Connected successfully to MongoDB');
-    return client.db();
+    return dbClient.db();
   } catch (error) {
     console.error('Could not connect to MongoDB', error);
     process.exit(1);
+  }
+}
+
+// Test MongoDB connection
+async function testMongoConnection(): Promise<boolean> {
+  if (!dbClient) {
+    return false;
+  }
+  try {
+    // Attempt to ping the database
+    await dbClient.db().command({ ping: 1 });
+    return true;
+  } catch (error) {
+    console.error('MongoDB connection test failed:', error);
+    return false;
   }
 }
 
@@ -78,7 +95,7 @@ const resolvers = {
 // Start the server
 async function startServer() {
   const db = await connectToDatabase();
-  
+
   const app = express();
   
   const server = new ApolloServer({ 
@@ -91,8 +108,13 @@ async function startServer() {
   server.applyMiddleware({ app });
 
   // Health check endpoint
-  app.get('/healthcheck', (req, res) => {
-    res.status(200).json({ status: 'OK', message: 'Server is running' });
+  app.get('/healthcheck', async (req, res) => {
+    const isMongoConnected = await testMongoConnection();
+    if (isMongoConnected) {
+      res.status(200).json({ status: 'OK', message: 'Server is running and connected to MongoDB' });
+    } else {
+      res.status(500).json({ status: 'Error', message: 'Server is running but not connected to MongoDB' });
+    }
   });
 
   const PORT = process.env.PORT || 4000;
