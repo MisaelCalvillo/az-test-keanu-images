@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
-import { ApolloServer, gql } from 'apollo-server';
+import { ApolloServer, gql } from 'apollo-server-express';
 import { MongoClient, Db } from 'mongodb';
 import axios from 'axios';
+import express from 'express';
 
 // Load environment variables
 dotenv.config();
@@ -78,15 +79,26 @@ const resolvers = {
 async function startServer() {
   const db = await connectToDatabase();
   
+  const app = express();
+  
   const server = new ApolloServer({ 
     typeDefs, 
     resolvers,
     context: { db } // Pass the database connection to the context
   });
 
+  await server.start();
+  server.applyMiddleware({ app });
+
+  // Health check endpoint
+  app.get('/healthcheck', (req, res) => {
+    res.status(200).json({ status: 'OK', message: 'Server is running' });
+  });
+
   const PORT = process.env.PORT || 4000;
-  server.listen(PORT).then(({ url }) => {
-    console.log(`🚀 Server ready at ${url}`);
+  app.listen(PORT, () => {
+    console.log(`🚀 Server ready at http://localhost:${PORT}${server.graphqlPath}`);
+    console.log(`Health check available at http://localhost:${PORT}/healthcheck`);
   });
 }
 
