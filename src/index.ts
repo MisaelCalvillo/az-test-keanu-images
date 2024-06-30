@@ -4,10 +4,8 @@ import { MongoClient, Db } from 'mongodb';
 import axios from 'axios';
 import express from 'express';
 
-// Load environment variables
 dotenv.config();
 
-// MongoDB connection URL
 const mongoUrl = process.env.MONGO_URI;
 
 if (!mongoUrl) {
@@ -17,11 +15,9 @@ if (!mongoUrl) {
 
 let dbClient: MongoClient;
 
-// MongoDB connection function
 async function connectToDatabase(): Promise<Db> {
   console.log('Connecting to MongoDB...');
   
-  // Remove any surrounding quotes from the connection string
   const cleanMongoUrl = mongoUrl?.replace(/^["'](.+(?=["']$))["']$/, '$1');
   if (!cleanMongoUrl) return process.exit(1);
 
@@ -37,13 +33,11 @@ async function connectToDatabase(): Promise<Db> {
   }
 }
 
-// Test MongoDB connection
 async function testMongoConnection(): Promise<boolean> {
   if (!dbClient) {
     return false;
   }
   try {
-    // Attempt to ping the database
     await dbClient.db().command({ ping: 1 });
     return true;
   } catch (error) {
@@ -52,15 +46,24 @@ async function testMongoConnection(): Promise<boolean> {
   }
 }
 
-// Define your GraphQL schema
 const typeDefs = gql`
+  type Transaction {
+    _id: ID!
+    width: Int!
+    height: Int!
+    young: Boolean!
+    grayscale: Boolean!
+    timestamp: String!
+    imageUrl: String!
+  }
+
   type Query {
     getKeanuImage(width: Int!, height: Int!, young: Boolean!, grayscale: Boolean!): String!
     fetchKeanuImage(width: Int!, height: Int!, young: Boolean!, grayscale: Boolean!): String!
+    getPastTransactions: [Transaction!]!
   }
 `;
 
-// Define your resolvers
 const resolvers = {
   Query: {
     getKeanuImage: (_: any, args: { width: number; height: number; young: boolean; grayscale: boolean }) => {
@@ -69,7 +72,7 @@ const resolvers = {
       const grayscaleParam = grayscale ? 'g' : 'c';
       return `https://placekeanu.com/${width}/${height}/${youngParam}/${grayscaleParam}`;
     },
-    fetchKeanuImage: async (_: any, args: { width: number; height: number; young: boolean; grayscale: boolean }) => {
+    fetchKeanuImage: async (_: any, args: { width: number; height: number; young: boolean; grayscale: boolean }, context: { db: Db }) => {
       const { width, height, young, grayscale } = args;
       const youngParam = young ? 'y' : 'g';
       const grayscaleParam = grayscale ? 'g' : 'c';
@@ -78,7 +81,19 @@ const resolvers = {
       try {
         const response = await axios.get(url, { responseType: 'arraybuffer' });
         const buffer = Buffer.from(response.data, 'binary');
-        return buffer.toString('base64');
+        const base64Image = buffer.toString('base64');
+
+        // Store transaction in MongoDB
+        await context.db.collection('transactions').insertOne({
+          width,
+          height,
+          young,
+          grayscale,
+          timestamp: new Date().toISOString(),
+          imageUrl: url
+        });
+
+        return base64Image;
       } catch (error) {
         if (axios.isAxiosError(error)) {
           console.error('Axios error:', error.message);
@@ -89,10 +104,22 @@ const resolvers = {
         }
       }
     },
+    getPastTransactions: async (_: any, __: any, context: { db: Db }) => {
+      try {
+        const transactions = await context.db.collection('transactions')
+          .find()
+          .sort({ timestamp: -1 })
+          .limit(100)  // Limit to last 100 transactions
+          .toArray();
+        return transactions;
+      } catch (error) {
+        console.error('Failed to retrieve past transactions:', error);
+        throw new Error('Failed to retrieve past transactions');
+      }
+    },
   },
 };
 
-// Start the server
 async function startServer() {
   const db = await connectToDatabase();
 
@@ -101,13 +128,12 @@ async function startServer() {
   const server = new ApolloServer({ 
     typeDefs, 
     resolvers,
-    context: { db } // Pass the database connection to the context
+    context: { db }
   });
 
   await server.start();
   server.applyMiddleware({ app });
 
-  // Health check endpoint
   app.get('/healthcheck', async (req, res) => {
     const isMongoConnected = await testMongoConnection();
     if (isMongoConnected) {
